@@ -15,7 +15,8 @@ it('shows the fact of the day on the home page', function () {
         ->assertOk()
         ->assertSee('Of Beren and Lúthien')
         ->assertSee('gave up her immortality', false)
-        ->assertSee('Lúthien');
+        ->assertSee('Lúthien')
+        ->assertSee(config('thefact.github_url'));
 });
 
 it('shows an empty state when no fact exists', function () {

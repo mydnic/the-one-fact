@@ -16,6 +16,44 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Project repository
+    |--------------------------------------------------------------------------
+    |
+    | Shown in the page footer so visitors can find the source and deploy their
+    | own instance. Override with GITHUB_URL if you fork the project.
+    |
+    */
+
+    'github_url' => env('GITHUB_URL', 'https://github.com/mydnic/the-one-fact'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | FlareSolverr
+    |--------------------------------------------------------------------------
+    |
+    | Tolkien Gateway sits behind Cloudflare's JavaScript challenge, which a
+    | plain HTTP client cannot pass. Requests are therefore routed through a
+    | FlareSolverr sidecar (headless Chrome) that solves the challenge and
+    | returns the resolved HTML. This points at that service's /v1 endpoint.
+    |
+    */
+
+    'flaresolverr_url' => env('FLARESOLVERR_URL', 'http://flaresolverr:8191/v1'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Request timeout
+    |--------------------------------------------------------------------------
+    |
+    | Maximum time (seconds) to wait for FlareSolverr to solve the challenge
+    | and return the page. The browser cold-start makes the first call slow.
+    |
+    */
+
+    'request_timeout' => (int) env('FACT_REQUEST_TIMEOUT', 90),
+
+    /*
+    |--------------------------------------------------------------------------
     | AI provider
     |--------------------------------------------------------------------------
     |

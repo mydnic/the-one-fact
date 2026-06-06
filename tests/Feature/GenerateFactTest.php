@@ -8,11 +8,17 @@ use Illuminate\Support\Facades\Http;
 function fakeArticle(): void
 {
     Http::fake([
-        '*' => Http::response(
-            '<html><body><h1 id="firstHeading">Glorfindel</h1>'.
-            '<div id="mw-content-text"><p>Glorfindel was an Elf-lord of Gondolin who fell fighting a Balrog.</p></div>'.
-            '</body></html>'
-        ),
+        '*flaresolverr*' => Http::response([
+            'status' => 'ok',
+            'solution' => [
+                'url' => 'https://tolkiengateway.net/wiki/Glorfindel',
+                'status' => 200,
+                'response' => '<html><body><h1 id="firstHeading">Glorfindel</h1>'.
+                    '<div id="mw-content-text"><table>citation junk</table>'.
+                    '<p>Glorfindel was an Elf-lord of Gondolin who fell fighting a Balrog.</p></div>'.
+                    '</body></html>',
+            ],
+        ]),
     ]);
 }
 
@@ -56,12 +62,14 @@ it('keeps a single fact per day when run more than once', function () {
 it('extracts the article body and title from wiki html', function () {
     $page = app(TolkienGateway::class)->extractContent(
         '<html><body><h1 id="firstHeading">Eärendil</h1>'.
-        '<div id="mw-content-text"><script>ignore()</script><p>Eärendil  the   Mariner.</p></div>'.
+        '<div id="mw-content-text"><script>ignore()</script>'.
+        '<table>refs</table><p>Eärendil  the   Mariner.</p></div>'.
         '</body></html>',
         'https://tolkiengateway.net/wiki/Earendil'
     );
 
     expect($page['title'])->toBe('Eärendil')
         ->and($page['content'])->toBe('Eärendil the Mariner.')
-        ->and($page['content'])->not->toContain('ignore');
+        ->and($page['content'])->not->toContain('ignore')
+        ->and($page['content'])->not->toContain('refs');
 });

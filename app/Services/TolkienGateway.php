@@ -8,11 +8,16 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use RuntimeException;
 
+/**
+ * Fetches a random Tolkien Gateway article. The site is protected by
+ * Cloudflare's JavaScript challenge, so requests are proxied through a
+ * FlareSolverr (headless Chrome) sidecar that solves the challenge for us.
+ */
 class TolkienGateway
 {
     /**
-     * Maximum number of characters of article text handed to the AI. Tolkien
-     * Gateway articles can be very long; trimming keeps token usage sane.
+     * Maximum number of characters of article text handed to the AI. Articles
+     * can be very long; trimming keeps token usage sane.
      */
     private const MAX_CONTENT_LENGTH = 8000;
 
@@ -21,21 +26,46 @@ class TolkienGateway
      *
      * @return array{url: string, title: string, content: string}
      */
-    public function fetchRandomPage(?string $url = null): array
+    public function fetchRandomPage(): array
     {
-        $url ??= (string) config('thefact.source_url');
+        $solution = $this->solve((string) config('thefact.source_url'));
 
-        $response = Http::withHeaders([
-            'User-Agent' => 'TheOneFact/1.0 (+https://github.com)',
-        ])->timeout(30)->get($url);
+        return $this->extractContent($solution['html'], $solution['url']);
+    }
+
+    /**
+     * Ask FlareSolverr to fetch a URL, returning the resolved HTML and URL.
+     *
+     * @return array{html: string, url: string}
+     */
+    private function solve(string $url): array
+    {
+        $endpoint = (string) config('thefact.flaresolverr_url');
+        $timeout = (int) config('thefact.request_timeout');
+
+        $response = Http::asJson()
+            ->acceptJson()
+            ->timeout($timeout)
+            ->post($endpoint, [
+                'cmd' => 'request.get',
+                'url' => $url,
+                'maxTimeout' => max(15, $timeout - 15) * 1000,
+            ]);
 
         if (! $response->successful()) {
-            throw new RuntimeException("Failed to fetch Tolkien Gateway page (HTTP {$response->status()}).");
+            throw new RuntimeException("FlareSolverr request failed (HTTP {$response->status()}).");
         }
 
-        $effectiveUri = $response->effectiveUri();
+        $data = $response->json();
 
-        return $this->extractContent($response->body(), $effectiveUri ? (string) $effectiveUri : $url);
+        if (($data['status'] ?? null) !== 'ok' || empty($data['solution']['response'])) {
+            throw new RuntimeException('FlareSolverr could not fetch the page: '.($data['message'] ?? 'unknown error'));
+        }
+
+        return [
+            'html' => $data['solution']['response'],
+            'url' => $data['solution']['url'] ?? $url,
+        ];
     }
 
     /**
@@ -65,7 +95,13 @@ class TolkienGateway
         }
 
         // Drop noise that would only waste tokens or confuse the model.
-        foreach ($xpath->query('.//script | .//style | .//table | .//*[contains(@class, "toc")]', $bodyNode) as $node) {
+        $noise = './/script | .//style | .//table'
+            .' | .//*[contains(@class, "toc")]'
+            .' | .//*[contains(@class, "navbox")]'
+            .' | .//*[contains(@class, "mw-editsection")]'
+            .' | .//*[contains(@class, "reference")]';
+
+        foreach (iterator_to_array($xpath->query($noise, $bodyNode)) as $node) {
             $node->parentNode?->removeChild($node);
         }
 

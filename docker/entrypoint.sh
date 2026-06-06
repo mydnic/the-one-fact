@@ -19,7 +19,7 @@ chown "$APP_USER":"$APP_USER" .env
 chown -R "$APP_USER":www-data storage bootstrap/cache
 
 as_user() {
-    runuser -u "$APP_USER" -- "$@"
+    su-exec "$APP_USER" "$@"
 }
 
 # Generate an application key if one was neither supplied nor already stored.
@@ -43,10 +43,10 @@ case "${1:-}" in
         exec "$@"
         ;;
     php)
-        exec runuser -u "$APP_USER" -- "$@"
+        exec su-exec "$APP_USER" "$@"
         ;;
     *)
         # On-demand mode, e.g. `docker compose run --rm the-one-fact fact:generate`.
-        exec runuser -u "$APP_USER" -- php artisan "$@"
+        exec su-exec "$APP_USER" php artisan "$@"
         ;;
 esac
