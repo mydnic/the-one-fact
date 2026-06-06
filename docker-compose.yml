@@ -1,0 +1,32 @@
+services:
+  the-one-fact:
+    image: mydnic/the-one-fact:latest
+    # To build locally instead of pulling, comment out `image` above and use:
+    # build:
+    #   context: .
+    #   args:
+    #     user: theonefact
+    #     uid: 1000          # set to your host user id so ./data stays yours
+    restart: unless-stopped
+    container_name: the-one-fact
+    ports:
+      - "8467:80"
+    volumes:
+      # SQLite database persistence — back up this folder to keep your facts.
+      - ./data:/data
+    environment:
+      # Pick any laravel/ai provider: openai, anthropic, gemini, mistral,
+      # groq, xai, deepseek, ollama, ...
+      - AI_PROVIDER=openai
+      # Optional model override (leave empty for the provider default).
+      - AI_MODEL=
+      # Set the API key matching the provider you chose above.
+      - OPENAI_API_KEY=
+      # - ANTHROPIC_API_KEY=
+      # - GEMINI_API_KEY=
+      # - MISTRAL_API_KEY=
+      # - GROQ_API_KEY=
+      # - XAI_API_KEY=
+      # - DEEPSEEK_API_KEY=
+      # For a self-hosted Ollama instance:
+      # - OLLAMA_URL=http://host.docker.internal:11434
