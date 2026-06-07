@@ -2,16 +2,20 @@
 
 namespace App\Services;
 
-use DOMDocument;
-use DOMXPath;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use RuntimeException;
 
 /**
- * Fetches a random Tolkien Gateway article. The site is protected by
- * Cloudflare's JavaScript challenge, so requests are proxied through a
- * FlareSolverr (headless Chrome) sidecar that solves the challenge for us.
+ * Fetches a random Tolkien Gateway article through the MediaWiki API. A single
+ * `generator=random` query returns a main-namespace article together with its
+ * plain-text extract and canonical URL, so no HTML scraping is required.
+ *
+ * The descriptive User-Agent identifies the project (per MediaWiki API
+ * etiquette) and is the string Tolkien Gateway whitelists so the request is
+ * never served a Cloudflare challenge in the first place.
+ *
+ * @see https://www.mediawiki.org/wiki/API:Random
  */
 class TolkienGateway
 {
@@ -22,103 +26,91 @@ class TolkienGateway
     private const MAX_CONTENT_LENGTH = 8000;
 
     /**
+     * How many random articles to try before giving up. Some pages (stubs,
+     * redirects) carry an empty extract, so we skip those and roll again.
+     */
+    private const MAX_ATTEMPTS = 5;
+
+    private const USER_AGENT = 'TheOneFact/1.0 (+https://github.com/mydnic/the-one-fact)';
+
+    /**
      * Fetch a random Tolkien Gateway article and return its readable content.
      *
      * @return array{url: string, title: string, content: string}
      */
     public function fetchRandomPage(): array
     {
-        $solution = $this->solve((string) config('thefact.source_url'));
+        for ($attempt = 0; $attempt < self::MAX_ATTEMPTS; $attempt++) {
+            $page = $this->queryRandomArticle();
+            $content = $this->normalizeContent((string) ($page['extract'] ?? ''));
 
-        return $this->extractContent($solution['html'], $solution['url']);
+            if ($content !== '') {
+                $title = (string) ($page['title'] ?? 'Unknown');
+
+                return [
+                    'url' => (string) ($page['fullurl'] ?? $this->articleUrl($title)),
+                    'title' => $title,
+                    'content' => $content,
+                ];
+            }
+        }
+
+        throw new RuntimeException('Could not fetch a Tolkien Gateway article with readable content.');
     }
 
     /**
-     * Ask FlareSolverr to fetch a URL, returning the resolved HTML and URL.
+     * Query the MediaWiki API for a single random main-namespace article,
+     * returning its raw page record (title, extract, fullurl, ...).
      *
-     * @return array{html: string, url: string}
+     * @return array<string, mixed>
      */
-    private function solve(string $url): array
+    private function queryRandomArticle(): array
     {
-        $endpoint = (string) config('thefact.flaresolverr_url');
-        $timeout = (int) config('thefact.request_timeout');
-
-        $response = Http::asJson()
+        $response = Http::withUserAgent(self::USER_AGENT)
             ->acceptJson()
-            ->timeout($timeout)
-            ->post($endpoint, [
-                'cmd' => 'request.get',
-                'url' => $url,
-                'maxTimeout' => max(15, $timeout - 15) * 1000,
+            ->timeout((int) config('thefact.request_timeout'))
+            ->get((string) config('thefact.api_url'), [
+                'action' => 'query',
+                'format' => 'json',
+                'generator' => 'random',
+                'grnnamespace' => 0,
+                'grnlimit' => 1,
+                'prop' => 'extracts|info',
+                'explaintext' => 1,
+                'exsectionformat' => 'plain',
+                'inprop' => 'url',
             ]);
 
         if (! $response->successful()) {
-            throw new RuntimeException("FlareSolverr request failed (HTTP {$response->status()}).");
+            throw new RuntimeException("Tolkien Gateway API request failed (HTTP {$response->status()}).");
         }
 
-        $data = $response->json();
+        $pages = $response->json('query.pages');
 
-        if (($data['status'] ?? null) !== 'ok' || empty($data['solution']['response'])) {
-            throw new RuntimeException('FlareSolverr could not fetch the page: '.($data['message'] ?? 'unknown error'));
+        if (! is_array($pages) || $pages === []) {
+            throw new RuntimeException('Tolkien Gateway API returned no random article.');
         }
 
-        return [
-            'html' => $data['solution']['response'],
-            'url' => $data['solution']['url'] ?? $url,
-        ];
+        return (array) reset($pages);
     }
 
     /**
-     * Extract the article title and #bodyContent text from a wiki page.
-     *
-     * @return array{url: string, title: string, content: string}
+     * Collapse whitespace and trim a plain-text extract down to the AI budget.
      */
-    public function extractContent(string $html, string $url): array
+    private function normalizeContent(string $extract): string
     {
-        $document = new DOMDocument;
-
-        $previous = libxml_use_internal_errors(true);
-        $document->loadHTML('<?xml encoding="UTF-8">'.$html);
-        libxml_clear_errors();
-        libxml_use_internal_errors($previous);
-
-        $xpath = new DOMXPath($document);
-
-        $titleNode = $xpath->query('//*[@id="firstHeading"]')->item(0);
-        $title = $titleNode ? trim($titleNode->textContent) : 'Unknown';
-
-        $bodyNode = $xpath->query('//*[@id="mw-content-text"]')->item(0)
-            ?? $xpath->query('//*[@id="bodyContent"]')->item(0);
-
-        if ($bodyNode === null) {
-            throw new RuntimeException('Could not locate the article body in the fetched page.');
-        }
-
-        // Drop noise that would only waste tokens or confuse the model.
-        $noise = './/script | .//style | .//table'
-            .' | .//*[contains(@class, "toc")]'
-            .' | .//*[contains(@class, "navbox")]'
-            .' | .//*[contains(@class, "mw-editsection")]'
-            .' | .//*[contains(@class, "reference")]';
-
-        foreach (iterator_to_array($xpath->query($noise, $bodyNode)) as $node) {
-            $node->parentNode?->removeChild($node);
-        }
-
-        $content = Str::of($bodyNode->textContent)
+        return Str::of($extract)
             ->replaceMatches('/\s+/u', ' ')
             ->trim()
             ->limit(self::MAX_CONTENT_LENGTH, '')
             ->value();
+    }
 
-        if ($content === '') {
-            throw new RuntimeException('The fetched Tolkien Gateway page had no readable content.');
-        }
-
-        return [
-            'url' => $url,
-            'title' => $title,
-            'content' => $content,
-        ];
+    /**
+     * Build a wiki URL from a title as a fallback when the API omits `fullurl`.
+     */
+    private function articleUrl(string $title): string
+    {
+        return 'https://tolkiengateway.net/wiki/'.str_replace('%2F', '/', rawurlencode(str_replace(' ', '_', $title)));
     }
 }

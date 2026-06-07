@@ -2,8 +2,8 @@
 
 A tiny self-hosted app that surfaces **one fact a day from J.R.R. Tolkien's Legendarium**.
 
-Every day an internal scheduler pulls a random article from
-[Tolkien Gateway](https://tolkiengateway.net/wiki/Special:Random), asks an AI to distil a
+Every day an internal scheduler pulls a random article from the
+[Tolkien Gateway](https://tolkiengateway.net) MediaWiki API, asks an AI to distil a
 single self-contained fact (plus a few tags) from it, and stores it in a SQLite database.
 The newest fact is shown on a minimal web page and exposed as JSON.
 
@@ -11,7 +11,7 @@ The newest fact is shown on a minimal web page and exposed as JSON.
 - 🤖 Bring-your-own AI — OpenAI, Anthropic, Gemini, Mistral, Groq, xAI, DeepSeek, Ollama… (via [`laravel/ai`](https://laravel.com/docs/ai))
 - 🌐 Simple Tailwind page + JSON API, no JavaScript, no accounts
 - 🐳 Slim Docker image (~217 MB) with a built-in cron
-- ☁️ Reads Tolkien Gateway through a FlareSolverr sidecar (the site is behind Cloudflare's bot challenge)
+- 📖 Reads Tolkien Gateway through its public MediaWiki API — no scraping, no extra services
 
 ## Installation (Docker)
 
@@ -37,17 +37,6 @@ services:
       - AI_PROVIDER=openai      # openai | anthropic | gemini | mistral | groq | xai | deepseek | ollama
       - AI_MODEL=               # optional model override, blank = provider default
       - OPENAI_API_KEY=sk-...   # the key matching your provider
-      - FLARESOLVERR_URL=http://flaresolverr:8191/v1
-    depends_on:
-      - flaresolverr
-
-  # Solves Tolkien Gateway's Cloudflare challenge so the app can read the wiki.
-  flaresolverr:
-    image: ghcr.io/flaresolverr/flaresolverr:latest
-    container_name: the-one-fact-flaresolverr
-    restart: unless-stopped
-    environment:
-      - LOG_LEVEL=info
 ```
 
 Start it:
@@ -129,22 +118,22 @@ npm run dev
 
 | Piece                                   | Responsibility                                            |
 | --------------------------------------- | --------------------------------------------------------- |
-| `App\Services\TolkienGateway`           | Fetches a random wiki page (via FlareSolverr) and extracts the article text. |
+| `App\Services\TolkienGateway`           | Fetches a random wiki article and its text via the MediaWiki API. |
 | `App\Ai\Agents\FactExtractor`           | `laravel/ai` agent returning structured `{title, fact, tags}`. |
 | `App\Jobs\GenerateDailyFact`            | Orchestrates fetch → AI → store as today's fact.          |
 | `fact:generate` command                 | Runs the job (used by the scheduler and on-demand).       |
 | `routes/console.php`                    | Schedules `fact:generate` daily at 06:00.                 |
 | `App\Http\Controllers\FactController`   | Serves the web page and the JSON API.                     |
 
-### Why FlareSolverr?
+### How the article is fetched
 
-Tolkien Gateway is protected by Cloudflare's JavaScript challenge, which a normal
-server-side HTTP request cannot pass (it only works in a real browser). The
-`flaresolverr` sidecar runs headless Chrome, solves the challenge, and returns the
-resolved HTML. The app talks to it over the internal Docker network at
-`FLARESOLVERR_URL`. The first request after startup is slow (browser cold start);
-subsequent ones are quick. To point the app at a different Tolkien wiki that isn't
-behind Cloudflare, set `FACT_SOURCE_URL` and you can drop the sidecar.
+Tolkien Gateway runs on MediaWiki, so the app reads it through the public
+[`api.php`](https://www.mediawiki.org/wiki/API:Random) endpoint rather than scraping
+HTML. A single `action=query&generator=random` call returns a random main-namespace
+article together with its plain-text extract and canonical URL. Requests send a
+descriptive `User-Agent` identifying the project, which Tolkien Gateway whitelists so
+they're served directly instead of hitting Cloudflare's bot challenge. Point the app at
+a different MediaWiki wiki with `FACT_API_URL`.
 
 ## License
 

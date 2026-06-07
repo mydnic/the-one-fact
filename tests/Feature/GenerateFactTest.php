@@ -8,15 +8,18 @@ use Illuminate\Support\Facades\Http;
 function fakeArticle(): void
 {
     Http::fake([
-        '*flaresolverr*' => Http::response([
-            'status' => 'ok',
-            'solution' => [
-                'url' => 'https://tolkiengateway.net/wiki/Glorfindel',
-                'status' => 200,
-                'response' => '<html><body><h1 id="firstHeading">Glorfindel</h1>'.
-                    '<div id="mw-content-text"><table>citation junk</table>'.
-                    '<p>Glorfindel was an Elf-lord of Gondolin who fell fighting a Balrog.</p></div>'.
-                    '</body></html>',
+        '*api.php*' => Http::response([
+            'batchcomplete' => '',
+            'query' => [
+                'pages' => [
+                    '123' => [
+                        'pageid' => 123,
+                        'ns' => 0,
+                        'title' => 'Glorfindel',
+                        'fullurl' => 'https://tolkiengateway.net/wiki/Glorfindel',
+                        'extract' => "Glorfindel was an Elf-lord of Gondolin\n\nwho fell   fighting a Balrog.",
+                    ],
+                ],
             ],
         ]),
     ]);
@@ -59,17 +62,27 @@ it('keeps a single fact per day when run more than once', function () {
     expect(Fact::count())->toBe(1);
 });
 
-it('extracts the article body and title from wiki html', function () {
-    $page = app(TolkienGateway::class)->extractContent(
-        '<html><body><h1 id="firstHeading">Eärendil</h1>'.
-        '<div id="mw-content-text"><script>ignore()</script>'.
-        '<table>refs</table><p>Eärendil  the   Mariner.</p></div>'.
-        '</body></html>',
-        'https://tolkiengateway.net/wiki/Earendil'
-    );
+it('returns the article title, url and normalized extract from the API', function () {
+    fakeArticle();
 
-    expect($page['title'])->toBe('Eärendil')
-        ->and($page['content'])->toBe('Eärendil the Mariner.')
-        ->and($page['content'])->not->toContain('ignore')
-        ->and($page['content'])->not->toContain('refs');
+    $page = app(TolkienGateway::class)->fetchRandomPage();
+
+    expect($page['title'])->toBe('Glorfindel')
+        ->and($page['url'])->toBe('https://tolkiengateway.net/wiki/Glorfindel')
+        ->and($page['content'])->toBe('Glorfindel was an Elf-lord of Gondolin who fell fighting a Balrog.');
+});
+
+it('skips articles without readable content and rolls again', function () {
+    Http::fakeSequence()
+        ->push([
+            'query' => ['pages' => ['1' => ['title' => 'Stub', 'fullurl' => 'https://tolkiengateway.net/wiki/Stub', 'extract' => '']]],
+        ])
+        ->push([
+            'query' => ['pages' => ['2' => ['title' => 'Glorfindel', 'fullurl' => 'https://tolkiengateway.net/wiki/Glorfindel', 'extract' => 'Glorfindel was an Elf-lord of Gondolin.']]],
+        ]);
+
+    $page = app(TolkienGateway::class)->fetchRandomPage();
+
+    expect($page['title'])->toBe('Glorfindel')
+        ->and($page['content'])->toBe('Glorfindel was an Elf-lord of Gondolin.');
 });

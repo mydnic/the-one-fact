@@ -7,12 +7,12 @@ return [
     | Source
     |--------------------------------------------------------------------------
     |
-    | The page the daily job pulls from. Tolkien Gateway's Special:Random
-    | endpoint redirects to a random article from the Legendarium wiki.
+    | The MediaWiki API endpoint the daily job pulls from. A generator=random
+    | query returns a random Legendarium article with its plain-text extract.
     |
     */
 
-    'source_url' => env('FACT_SOURCE_URL', 'https://tolkiengateway.net/wiki/Special:Random'),
+    'api_url' => env('FACT_API_URL', 'https://tolkiengateway.net/w/api.php'),
 
     /*
     |--------------------------------------------------------------------------
@@ -28,29 +28,14 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | FlareSolverr
-    |--------------------------------------------------------------------------
-    |
-    | Tolkien Gateway sits behind Cloudflare's JavaScript challenge, which a
-    | plain HTTP client cannot pass. Requests are therefore routed through a
-    | FlareSolverr sidecar (headless Chrome) that solves the challenge and
-    | returns the resolved HTML. This points at that service's /v1 endpoint.
-    |
-    */
-
-    'flaresolverr_url' => env('FLARESOLVERR_URL', 'http://flaresolverr:8191/v1'),
-
-    /*
-    |--------------------------------------------------------------------------
     | Request timeout
     |--------------------------------------------------------------------------
     |
-    | Maximum time (seconds) to wait for FlareSolverr to solve the challenge
-    | and return the page. The browser cold-start makes the first call slow.
+    | Maximum time (seconds) to wait for the MediaWiki API to respond.
     |
     */
 
-    'request_timeout' => (int) env('FACT_REQUEST_TIMEOUT', 90),
+    'request_timeout' => (int) env('FACT_REQUEST_TIMEOUT', 15),
 
     /*
     |--------------------------------------------------------------------------

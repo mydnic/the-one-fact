@@ -30,15 +30,3 @@ services:
       # - DEEPSEEK_API_KEY=
       # For a self-hosted Ollama instance:
       # - OLLAMA_URL=http://host.docker.internal:11434
-      # Tolkien Gateway is behind Cloudflare; requests go through the sidecar.
-      - FLARESOLVERR_URL=http://flaresolverr:8191/v1
-    depends_on:
-      - flaresolverr
-
-  # Headless-browser proxy that solves Tolkien Gateway's Cloudflare challenge.
-  flaresolverr:
-    image: ghcr.io/flaresolverr/flaresolverr:latest
-    container_name: the-one-fact-flaresolverr
-    restart: unless-stopped
-    environment:
-      - LOG_LEVEL=info
