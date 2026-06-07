@@ -30,3 +30,5 @@ services:
       # - DEEPSEEK_API_KEY=
       # For a self-hosted Ollama instance:
       # - OLLAMA_URL=http://host.docker.internal:11434
+      # To change the time for the daily trigger, change the timezone
+      # - APP_TIMEZONE=UTC

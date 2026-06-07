@@ -116,14 +116,14 @@ npm run dev
 
 ## How it works
 
-| Piece                                   | Responsibility                                            |
-| --------------------------------------- | --------------------------------------------------------- |
+| Piece                                   | Responsibility                                                    |
+| --------------------------------------- |-------------------------------------------------------------------|
 | `App\Services\TolkienGateway`           | Fetches a random wiki article and its text via the MediaWiki API. |
-| `App\Ai\Agents\FactExtractor`           | `laravel/ai` agent returning structured `{title, fact, tags}`. |
-| `App\Jobs\GenerateDailyFact`            | Orchestrates fetch → AI → store as today's fact.          |
-| `fact:generate` command                 | Runs the job (used by the scheduler and on-demand).       |
-| `routes/console.php`                    | Schedules `fact:generate` daily at 06:00.                 |
-| `App\Http\Controllers\FactController`   | Serves the web page and the JSON API.                     |
+| `App\Ai\Agents\FactExtractor`           | `laravel/ai` agent returning structured `{title, fact, tags}`.    |
+| `App\Jobs\GenerateDailyFact`            | Orchestrates fetch → AI → store as today's fact.                  |
+| `fact:generate` command                 | Runs the job (used by the scheduler and on-demand).               |
+| `routes/console.php`                    | Schedules `fact:generate` daily at 00:00.                         |
+| `App\Http\Controllers\FactController`   | Serves the web page and the JSON API.                             |
 
 ### How the article is fetched
 
