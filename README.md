@@ -135,6 +135,36 @@ descriptive `User-Agent` identifying the project, which Tolkien Gateway whitelis
 they're served directly instead of hitting Cloudflare's bot challenge. Point the app at
 a different MediaWiki wiki with `FACT_API_URL`.
 
+## Releasing
+
+The published image is multi-arch (`linux/amd64` + `linux/arm64`), so it must be built
+with a `docker-container` buildx builder — the default `docker` driver cannot do
+multi-platform builds. Create the builder once:
+
+```bash
+docker buildx create --name tof-builder --driver docker-container --bootstrap
+```
+
+Then, to cut a release (replace `X.Y.Z` with the new version):
+
+```bash
+# 1. Tag the repo (Docker Hub uses the same no-v semver scheme)
+git tag -a X.Y.Z -m "X.Y.Z" && git push origin X.Y.Z
+
+# 2. Build both arches and push X.Y.Z + latest in one shot
+docker buildx build --builder tof-builder \
+  --platform linux/amd64,linux/arm64 \
+  --tag mydnic/the-one-fact:X.Y.Z \
+  --tag mydnic/the-one-fact:latest \
+  --push .
+```
+
+Verify both architectures landed:
+
+```bash
+docker buildx imagetools inspect mydnic/the-one-fact:X.Y.Z
+```
+
 ## License
 
 MIT.
